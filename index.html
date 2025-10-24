@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inverter & BESS Grid Simulation & Market Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Load Lucide Icons for better visual cues -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .card { 
+            background: white; 
+            border-radius: 1.5rem; /* Slightly larger radius */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06); 
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        input[type="number"] { 
+            padding: 0.75rem; 
+            border: 2px solid #cbd5e1; 
+            border-radius: 0.75rem; 
+            transition: border-color 0.2s, box-shadow 0.2s; 
+            font-weight: 600;
+        }
+        input[type="number"]:focus { 
+            border-color: #3b82f6; 
+            outline: none; 
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25); 
+            background-color: #f9fafb;
+        }
+        .tab-button {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            border-radius: 1rem 1rem 0 0;
+            transition: background-color 0.2s, color 0.2s;
+            font-weight: 700;
+            margin-right: 0.5rem;
+        }
+        .tab-active {
+            background-color: white;
+            color: #1e40af;
+            border-top: 4px solid #3b82f6;
+            transform: translateY(2px); /* Lift effect */
+            z-index: 10;
+        }
+        .tab-inactive {
+            background-color: #e5e7eb;
+            color: #6b7280;
+        }
+        .output-box {
+            padding: 1.25rem;
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            min-height: 120px;
+        }
+        .output-box p {
+            font-weight: 700;
+            font-size: 1.875rem; /* text-3xl */
+            line-height: 1;
+        }
+
+        /* Modal Specific Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            max-width: 90%;
+            width: 500px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        /* Mobile adjustments for grid columns */
+        @media (max-width: 640px) {
+            .input-grid-2-cols {
+                grid-template-columns: 1fr;
+            }
+            .input-grid-4-cols {
+                grid-template-columns: 1fr 1fr; /* Keep some columns side-by-side if they fit */
+            }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8 text-center border-b-4 border-blue-500 pb-3">
+            Inverter Modes & BESS Simulation for Philippine Grid
+        </h1>
+
+        <!-- Tabs -->
+        <div class="flex border-b-2 border-gray-300 relative">
+            <div id="gfl-tab" class="tab-button tab-inactive" onclick="switchTab('gfl')">
+                <i data-lucide="zap"></i> GFL & Weak Grid/SCR
+            </div>
+            <div id="gfm-tab" class="tab-button tab-inactive" onclick="switchTab('gfm')">
+                <i data-lucide="dollar-sign"></i> PH IRESS Market Analysis
+            </div>
+             <div id="inertial-tab" class="tab-button tab-active" onclick="switchTab('inertial')">
+                <i data-lucide="gauge"></i> Inertia & PFR Control
+            </div>
+        </div>
+
+        <!-- GFL Content (Weak Grid) -->
+        <div id="gfl-content" class="tab-content hidden pt-8">
+            <div class="card p-6 sm:p-8 mb-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center"><i data-lucide="power" class="w-6 h-6 mr-3 text-blue-500"></i> GFL Mode: Power Control in Weak Grids (SCR)</h2>
+                <p class="text-sm text-gray-600 mb-6">The GFL inverter acts as a controlled current source. Stability risks arise in weak grids (low SCR) where the maximum active power is limited.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+                    <!-- Inputs -->
+                    <div class="space-y-6 col-span-2">
+                        <div class="bg-gray-100 p-4 rounded-xl border border-gray-300">
+                            <h3 class="font-bold text-lg text-gray-700 mb-3 border-b pb-2">Inverter & Grid Inputs</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="gfl_p_set" class="block text-sm font-medium text-gray-600">Active Power Setpoint (P_set) [kW]:</label>
+                                    <input type="number" id="gfl_p_set" value="100" min="0" oninput="calculateGFL()" class="w-full">
+                                </div>
+                                <div>
+                                    <label for="gfl_q_set" class="block text-sm font-medium text-gray-600">Reactive Power Setpoint (Q_set) [kVAR]:</label>
+                                    <input type="number" id="gfl_q_set" value="20" oninput="calculateGFL()" class="w-full">
+                                </div>
+                                <div>
+                                    <label for="gfl_scr" class="block text-sm font-medium text-gray-600 flex items-center">
+                                        Short Circuit Ratio (SCR): 
+                                        <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-blue-500 cursor-pointer" 
+                                            onclick="openModal('Short Circuit Ratio (SCR)', 'SCR is the ratio of the grid fault level (short circuit current) to the inverter rated current. A low SCR (< 3.0) indicates a **weak grid** where the inverter\'s output significantly impacts grid voltage, leading to stability risks and power limits.')"></i>
+                                    </label>
+                                    <input type="number" id="gfl_scr" value="3.0" min="0.5" step="0.1" oninput="calculateGFL()" class="w-full">
+                                    <p class="text-xs text-gray-500 mt-1">SCR &lt; 3.0 indicates a weak grid.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Outputs (Current/PF & Stability) -->
+                    <div class="space-y-6 col-span-3">
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- S Calculation -->
+                            <div class="output-box bg-blue-50 border border-blue-200">
+                                <span class="text-sm font-medium text-blue-700">Apparent Power (S)</span>
+                                <p id="gfl_s_calc" class="text-blue-800">0 kVA</p>
+                            </div>
+                            <!-- PF Calculation -->
+                            <div class="output-box bg-blue-50 border border-blue-200">
+                                <span class="text-sm font-medium text-blue-700">Power Factor (PF)</span>
+                                <p id="gfl_pf_calc" class="text-blue-800">0</p>
+                            </div>
+                            <!-- SCR Limit -->
+                            <div class="output-box bg-yellow-50 border border-yellow-200">
+                                <span class="text-sm font-medium text-yellow-700">Stability Max P (Pmax,SCR)</span>
+                                <p id="gfl_p_max_scr" class="text-yellow-800">0 kW</p>
+                            </div>
+                            <!-- Status -->
+                            <div class="output-box bg-gray-100 border border-gray-300">
+                                <span class="text-sm font-medium text-gray-700">Overall Status</span>
+                                <p id="gfl_status" class="text-lg font-bold text-green-600">OK</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Voltage Support Requirement -->
+            <div class="card p-6 sm:p-8 mb-8 bg-gray-50 border-t-4 border-gray-300">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center"><i data-lucide="zap" class="w-5 h-5 mr-2 text-red-500"></i> Voltage Support Requirement (PGC)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="gfl_v_grid_pu" class="block text-sm font-medium text-gray-600">Grid Voltage (V_grid) [p.u.]:</label>
+                            <input type="number" id="gfl_v_grid_pu" value="1.0" min="0.5" max="1.5" step="0.01" oninput="calculateGFL()" class="w-full">
+                        </div>
+                    </div>
+                    
+                    <div class="output-box bg-red-50 border border-red-200 col-span-2">
+                         <span class="text-sm font-medium text-red-700 flex items-center">
+                            Reactive Power & Voltage Support Status
+                             <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-red-500 cursor-pointer" 
+                                onclick="openModal('PGC Voltage Support Standard', 'The Philippine Grid Code (PGC) requires power facilities to maintain adequate voltage support. The proposed standard is typically $0.95$ p.u. to $1.05$ p.u. at the Point of Connection. Operating outside this range may lead to disconnection or grid instability penalties.')"></i>
+                        </span>
+                         <p id="gfl_v_status" class="text-lg font-bold text-red-600">COMPLIANT (0.95 p.u. - 1.05 p.u.)</p>
+                    </div>
+                </div>
+                <p class="mt-4 text-xs text-gray-500">The Proposed PGC requires Reactive Power and Voltage Support between 0.95 p.u. and 1.05 p.u.</p>
+            </div>
+
+            <!-- Fault Current Contribution -->
+            <div class="card p-6 sm:p-8 mb-8 bg-gray-100 border-t-4 border-gray-500">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center"><i data-lucide="shield-alert" class="w-5 h-5 mr-2 text-purple-600"></i> Fault Current & Protection (GFM vs GFL)</h3>
+                <p class="text-sm text-gray-600 mb-4">Compare how GFL (current-limited) and GFM (voltage-controlled) inverters respond to faults. (Assume Base Current $I_B = 100 A$)</p>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="space-y-4 col-span-2">
+                        <div class="bg-white p-3 rounded-lg border border-gray-300">
+                            <label for="gfm_z_vsm" class="block text-sm font-medium text-gray-600 flex items-center">
+                                GFM Virtual Impedance ($Z_{vsm}$) [p.u.]:
+                                <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-purple-600 cursor-pointer" 
+                                    onclick="openModal('GFM Virtual Impedance (Z_vsm)', 'The GFM inverter uses virtual impedance to mimic a synchronous machine and limit its short-circuit current. **A higher Z_vsm means lower fault current contribution.** This is key for managing distribution protection systems.')"></i>
+                            </label>
+                            <input type="number" id="gfm_z_vsm" value="0.2" min="0.05" max="1.0" step="0.01" oninput="calculateFaultCurrent()" class="w-full">
+                            <p class="text-xs text-gray-500 mt-1">Typical range: 0.1 to 0.4 p.u.</p>
+                        </div>
+                    </div>
+                     <!-- Outputs -->
+                    <div class="output-box bg-red-100 border border-red-300">
+                        <span class="text-sm font-medium text-red-700">GFL Fault Current (I_fault)</span>
+                        <p id="fault_current_gfl" class="text-red-800">0 p.u.</p>
+                        <p class="text-xs text-gray-500 mt-1">Typically fixed &lt; 2.0 p.u. (Current-limited)</p>
+                    </div>
+                    <div class="output-box bg-purple-100 border border-purple-300">
+                        <span class="text-sm font-medium text-purple-700">GFM Fault Current (I_fault)</span>
+                        <p id="fault_current_gfm" class="text-purple-800">0 p.u.</p>
+                        <p class="text-xs text-gray-500 mt-1">Controllable (Voltage-controlled)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GFL Graph -->
+            <div class="card p-6 sm:p-8">
+                <h3 class="text-xl font-bold text-gray-700 mb-4">P-Q Capability with SCR Limit</h3>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <canvas id="gflChart" height="250"></canvas>
+                </div>
+                <p class="mt-4 text-xs text-gray-500">The capability circle is the inverter's rating (S_rated). The vertical dashed line shows the P_max stability limit imposed by the grid SCR (weak grid constraint).</p>
+            </div>
+        </div>
+
+        <!-- GFM Content (PH IRESS Business Models) -->
+        <div id="gfm-content" class="tab-content hidden pt-8">
+            <div class="card p-6 sm:p-8 mb-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center"><i data-lucide="trending-up" class="w-6 h-6 mr-3 text-green-500"></i> PH IRESS Market & Sizing Analysis</h2>
+                <p class="text-sm text-gray-600 mb-6">Calculates the required capacity and energy for Baseload, Mid-merit, and Peaking IRESS models based on the Philippine market structure.</p>
+                
+                <!-- Sizing Calculator -->
+                <div class="bg-blue-50 p-6 rounded-xl mb-8 border border-blue-200">
+                    <h3 class="text-xl font-extrabold text-blue-800 mb-4 border-b border-blue-300 pb-2">IRESS Sizing Calculator</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+                        <!-- 1. General Inputs -->
+                        <div class="space-y-4 bg-white p-4 rounded-lg border border-gray-300 col-span-1">
+                            <h4 class="font-bold text-gray-700 border-b pb-2">General Inputs</h4>
+                            <div>
+                                <label for="ires_peak_power" class="block text-sm font-medium text-gray-600">Required Dispatch Power (P) [MW]:</label>
+                                <input type="number" id="ires_peak_power" value="50" min="1" step="1" oninput="calculateIRESS()" class="w-full">
+                            </div>
+                            <div>
+                                <label for="ires_hours_per_day" class="block text-sm font-medium text-gray-600">Available Daily PV Generation [MWh/day]:</label>
+                                <input type="number" id="ires_hours_per_day" value="300" min="10" step="10" oninput="calculateIRESS()" class="w-full">
+                                <p class="text-xs text-gray-500 mt-1">Energy available to charge BESS.</p>
+                            </div>
+                        </div>
+
+                        <!-- 2. Baseload Model (24h) -->
+                        <div class="space-y-2 output-box bg-red-100 border border-red-300">
+                            <h4 class="font-extrabold text-red-800 text-base">Baseload (24h)</h4>
+                            <span class="text-xs text-red-700 font-semibold">Duration: 24 hours</span>
+                            <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700 flex items-center">
+                                    BESS Energy (E_BESS):
+                                    <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-red-500 cursor-pointer" 
+                                        onclick="openModal('Required BESS Energy (E_BESS)', 'This is the total energy capacity the BESS must store (in MWh) to deliver the Required Dispatch Power (P) for the specified duration (e.g., 24 hours). The calculation accounts for a realistic round-trip efficiency.')"></i>
+                                </span>
+                                <p id="ires_e_baseload" class="text-red-800 text-xl font-extrabold">0 MWh</p>
+                            </div>
+                             <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700">Required PV Oversizing:</span>
+                                <p id="ires_pv_baseload" class="text-red-800 text-xl font-extrabold">0%</p>
+                            </div>
+                        </div>
+
+                        <!-- 3. Mid-merit Model (12h) -->
+                        <div class="space-y-2 output-box bg-amber-100 border border-amber-300">
+                            <h4 class="font-extrabold text-amber-800 text-base">Mid-merit (12h)</h4>
+                            <span class="text-xs text-amber-700 font-semibold">Duration: 12 hours</span>
+                            <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700 flex items-center">
+                                    BESS Energy (E_BESS):
+                                    <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-amber-500 cursor-pointer" 
+                                        onclick="openModal('Required BESS Energy (E_BESS)', 'This is the total energy capacity the BESS must store (in MWh) to deliver the Required Dispatch Power (P) for the specified duration (e.g., 12 hours). The calculation accounts for a realistic round-trip efficiency.')"></i>
+                                </span>
+                                <p id="ires_e_midmerit" class="text-amber-800 text-xl font-extrabold">0 MWh</p>
+                            </div>
+                            <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700">Required PV Oversizing:</span>
+                                <p id="ires_pv_midmerit" class="text-amber-800 text-xl font-extrabold">0%</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 4. Peaking Model (6h) -->
+                        <div class="space-y-2 output-box bg-teal-100 border border-teal-300">
+                            <h4 class="font-extrabold text-teal-800 text-base">Peaking (6h)</h4>
+                            <span class="text-xs text-teal-700 font-semibold">Duration: 6 hours</span>
+                            <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700 flex items-center">
+                                    BESS Energy (E_BESS):
+                                    <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-teal-500 cursor-pointer" 
+                                        onclick="openModal('Required BESS Energy (E_BESS)', 'This is the total energy capacity the BESS must store (in MWh) to deliver the Required Dispatch Power (P) for the specified duration (e.g., 6 hours). The calculation accounts for a realistic round-trip efficiency.')"></i>
+                                </span>
+                                <p id="ires_e_peaking" class="text-teal-800 text-xl font-extrabold">0 MWh</p>
+                            </div>
+                            <div class="pt-2">
+                                <span class="font-semibold text-sm text-gray-700">Required PV Oversizing:</span>
+                                <p id="ires_pv_peaking" class="text-teal-800 text-xl font-extrabold">0%</p>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+
+                <!-- Ancillary Service Stacking & Revenue -->
+                <div class="bg-purple-50 p-6 rounded-xl mb-8 border border-purple-300">
+                    <h3 class="text-xl font-extrabold text-purple-800 mb-4 border-b border-purple-400 pb-2 flex items-center"><i data-lucide="wallet" class="w-5 h-5 mr-2"></i> AS Revenue Potential (Fast Regulation)</h3>
+                    <p class="text-sm text-gray-600 mb-4">Calculate potential annual revenue for a GFM BESS providing PGC Fast Regulation AS.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <!-- Inputs -->
+                        <div class="space-y-4 col-span-2">
+                             <div class="bg-white p-3 rounded-lg border border-gray-300">
+                                <label for="as_capacity_mw" class="block text-sm font-medium text-gray-600">GFM BESS Capacity (P_GFM) [MW]:</label>
+                                <input type="number" id="as_capacity_mw" value="100" min="1" step="10" oninput="calculateASRevenue()" class="w-full">
+                            </div>
+                            <div class="bg-white p-3 rounded-lg border border-gray-300">
+                                <label for="as_price_per_mwh" class="block text-sm font-medium text-gray-600 flex items-center">
+                                    AS Price (Fast Regulation) [USD/MWh]:
+                                    <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-purple-600 cursor-pointer" 
+                                        onclick="openModal('AS Price (Fast Regulation)', 'This is the average price the GFM BESS receives for providing energy or capacity in the Ancillary Service market. It is often calculated on a dollar per MWh basis for regulation services.')"></i>
+                                </label>
+                                <input type="number" id="as_price_per_mwh" value="30" min="1" step="1" oninput="calculateASRevenue()" class="w-full">
+                            </div>
+                            <div class="bg-white p-3 rounded-lg border border-gray-300">
+                                <label for="as_avail_factor" class="block text-sm font-medium text-gray-600">Annual Availability Factor [%]:</label>
+                                <input type="number" id="as_avail_factor" value="90" min="10" max="100" step="1" oninput="calculateASRevenue()" class="w-full">
+                            </div>
+                        </div>
+                         <!-- Output -->
+                        <div class="output-box bg-purple-100 border border-purple-300 col-span-2">
+                             <span class="text-sm font-medium text-purple-700">Potential Annual AS Revenue</span>
+                             <p id="as_revenue_output" class="text-purple-800">$0</p>
+                             <p class="text-xs text-gray-500 mt-1">Based on 8760 operating hours/year.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Analysis Section -->
+                <div class="bg-gray-100 p-6 rounded-xl border border-gray-300">
+                    <h3 class="text-xl font-extrabold text-gray-800 mb-4 border-b border-gray-400 pb-2 flex items-center"><i data-lucide="pie-chart" class="w-5 h-5 mr-2 text-indigo-500"></i> PH EC IRESS Market Potential</h3>
+                    <p class="text-sm text-gray-600 mb-4">Market sizing based on data provided for Electric Cooperatives (ECs) and major requirements.</p>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white rounded-lg shadow-md">
+                            <thead>
+                                <tr class="bg-indigo-600 text-white text-sm">
+                                    <th class="py-3 px-4 text-left rounded-tl-lg">Requirement Type</th>
+                                    <th class="py-3 px-4">EC Quantity</th>
+                                    <th class="py-3 px-4">Total Capacity (MW)</th>
+                                    <th class="py-3 px-4 rounded-tr-lg">Average Capacity (MW)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="border-b hover:bg-red-50">
+                                    <td class="py-3 px-4 font-semibold text-red-700">Baseload (24h)</td>
+                                    <td class="py-3 px-4 text-center" id="market_qty_base">33</td>
+                                    <td class="py-3 px-4 text-center" id="market_total_base">700</td>
+                                    <td class="py-3 px-4 text-center font-bold text-lg text-red-600" id="market_avg_base">21.2</td>
+                                </tr>
+                                <tr class="border-b hover:bg-amber-50">
+                                    <td class="py-3 px-4 font-semibold text-amber-700">Mid-Merit (10-12h)</td>
+                                    <td class="py-3 px-4 text-center" id="market_qty_mid">16</td>
+                                    <td class="py-3 px-4 text-center" id="market_total_mid">160</td>
+                                    <td class="py-3 px-4 text-center font-bold text-lg text-amber-600" id="market_avg_mid">10.0</td>
+                                </tr>
+                                <tr class="hover:bg-teal-50">
+                                    <td class="py-3 px-4 font-semibold text-teal-700">Peaking (4-6h)</td>
+                                    <td class="py-3 px-4 text-center" id="market_qty_peak">10</td>
+                                    <td class="py-3 px-4 text-center" id="market_total_peak">60</td>
+                                    <td class="py-3 px-4 text-center font-bold text-lg text-teal-600" id="market_avg_peak">6.0</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-6 p-4 bg-indigo-50 rounded-lg border border-indigo-300">
+                        <p class="text-xl font-extrabold text-indigo-800">Total Potential IRESS Capacity: <span id="market_total_potential">0</span> MW</p>
+                        <p class="text-sm text-gray-600 mt-1">This represents the combined market demand for these three IRESS types from the targeted ECs.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graph for IRESS -->
+            <div class="card p-6 sm:p-8">
+                <h3 class="text-xl font-bold text-gray-700 mb-4">Energy Comparison: Required vs. Available</h3>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <canvas id="iresChart" height="250"></canvas>
+                </div>
+                <p class="mt-4 text-xs text-gray-500">The bars show the required BESS energy capacity for each IRESS model based on the input power. The line indicates the daily PV energy available for charging.</p>
+            </div>
+        </div>
+        
+        <!-- Inertia Content (GFM VSM) -->
+        <div id="inertial-content" class="tab-content pt-8">
+            <div class="card p-6 sm:p-8 mb-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center"><i data-lucide="speedometer" class="w-6 h-6 mr-3 text-purple-600"></i> Frequency Control: Inertia, PFR, and AS Compliance</h2>
+                <p class="text-sm text-gray-600 mb-6">This models the system frequency response to a disturbance, determined by **Inertia (RoCoF)** and **Primary Frequency Response (PFR)**, and evaluates compliance with **Fast AS categories**.</p>
+
+                <div class="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                    
+                    <!-- 1. System Inputs & Parameters (Col 1/2) -->
+                    <div class="space-y-6 col-span-2 lg:col-span-2">
+                        <div class="bg-gray-100 p-4 rounded-xl border border-gray-300">
+                            <h3 class="font-bold text-lg text-gray-700 mb-3 border-b pb-2">Disturbance & System Parameters</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="sys_s_rated" class="block text-sm font-medium text-gray-600">Total System Rated Power (S_Sys) [MVA]:</label>
+                                    <input type="number" id="sys_s_rated" value="2000" min="100" step="100" oninput="calculateInertia()" class="w-full">
+                                </div>
+                                <div>
+                                    <label for="delta_p" class="block text-sm font-medium text-gray-600">Initial Power Imbalance (&Delta;P) [MW]:</label>
+                                    <input type="number" id="delta_p" value="-200" step="10" oninput="calculateInertia()" class="w-full">
+                                    <p class="text-xs text-gray-500 mt-1">e.g., -200MW means 200MW generation loss.</p>
+                                </div>
+                                 <div>
+                                    <label for="pfr_droop" class="block text-sm font-medium text-gray-600">System Droop Constant (R) [%]:</label>
+                                    <input type="number" id="pfr_droop" value="4.0" min="1.0" step="0.1" oninput="calculateInertia()" class="w-full">
+                                    <p class="text-xs text-gray-500 mt-1">Typ. 4-5% for conventional governors.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-100 p-4 rounded-xl border border-gray-300">
+                            <h3 class="font-bold text-lg text-gray-700 mb-3 border-b pb-2">Generation Mix (Capacity & Inertia)</h3>
+                            <div class="space-y-3">
+                                <div class="space-y-1 bg-gray-50 p-2 rounded-lg">
+                                    <label for="cap_thermal" class="block text-sm font-medium text-gray-600">Thermal/Coal/Gas (H &asymp; 6.0s) [MW]:</label>
+                                    <input type="number" id="cap_thermal" value="1000" min="0" step="100" oninput="calculateInertia()" class="w-full">
+                                </div>
+                                 <div class="space-y-1 bg-gray-50 p-2 rounded-lg">
+                                    <label for="cap_nuclear" class="block text-sm font-medium text-gray-600">Nuclear/Hydro (H &asymp; 4.0s) [MW]:</label>
+                                    <input type="number" id="cap_nuclear" value="500" min="0" step="100" oninput="calculateInertia()" class="w-full">
+                                </div>
+                                <div class="space-y-1 bg-green-50 p-2 rounded-lg">
+                                    <label for="cap_gfl" class="block text-sm font-medium text-gray-600">GFL Renewables (H=0.0s) [MW]:</label>
+                                    <input type="number" id="cap_gfl" value="300" min="0" step="100" oninput="calculateInertia()" class="w-full">
+                                </div>
+                                <div class="space-y-1 bg-purple-50 p-2 rounded-lg">
+                                    <label for="cap_gfm_bess" class="block text-sm font-medium text-gray-600">GFM BESS (Virtual H &asymp; 2.0s) [MW]:</label>
+                                    <input type="number" id="cap_gfm_bess" value="200" min="0" step="100" oninput="calculateInertia()" class="w-full">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 2. Inertia Outputs (Col 3/4) -->
+                    <div class="space-y-6 col-span-2">
+                         <!-- Inertia Outputs -->
+                        <div class="output-box bg-purple-100 border border-purple-300">
+                            <span class="text-sm font-medium text-purple-700 flex items-center">
+                                Total System Inertia (H_Total)
+                                <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-purple-600 cursor-pointer" 
+                                    onclick="openModal('Total System Inertia (H_Total)', 'Inertia ($H$) buffers frequency against power imbalances. This value is the weighted average of all connected generators (Thermal, Nuclear, GFM BESS) and is critical: **Higher $H$ means slower RoCoF**.')"></i>
+                            </span>
+                            <p id="h_total_calc" class="text-purple-800">0.0 s</p>
+                        </div>
+                        <div class="output-box bg-red-100 border border-red-300">
+                             <span class="text-sm font-medium text-red-700 flex items-center">
+                                Peak RoCoF (df/dt)
+                                <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-red-600 cursor-pointer" 
+                                    onclick="openModal('Rate of Change of Frequency (RoCoF)', 'RoCoF is the initial rate at which system frequency drops after a generation trip. It is inversely proportional to system inertia. **High RoCoF is a major stability risk** for relays and system separation.')"></i>
+                            </span>
+                            <p id="rocof_calc" class="text-red-800">0.0 Hz/s</p>
+                        </div>
+                        
+                        <!-- PFR Outputs -->
+                        <div class="output-box bg-blue-100 border border-blue-300">
+                            <span class="text-sm font-medium text-blue-700">Quasi-Steady State Freq (f_QSS)</span>
+                            <p id="qss_calc" class="text-blue-800">0.0 Hz</p>
+                        </div>
+                         <div class="output-box bg-orange-100 border border-orange-300">
+                            <span class="text-sm font-medium text-orange-700">Frequency Nadir (f_Nadir)</span>
+                            <p id="nadir_calc" class="text-orange-800">0.0 Hz</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 3. AS Compliance (Col 5) -->
+                    <div class="space-y-6 col-span-1 lg:col-span-4 xl:col-span-1">
+                         <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-300 h-full">
+                            <h3 class="font-bold text-lg text-indigo-700 mb-3 border-b pb-2 flex items-center"><i data-lucide="check-circle" class="w-5 h-5 mr-2"></i> PGC Ancillary Services (AS)</h3>
+                            <div class="space-y-4">
+                                <div class="text-sm">
+                                    <p class="font-semibold text-indigo-800">Total VRE Capacity (GFL):</p>
+                                    <p id="as_vre_capacity" class="text-base font-bold text-gray-700">0 MW</p>
+                                </div>
+                                <div class="text-sm">
+                                    <p class="font-semibold text-indigo-800 flex items-center">
+                                        Fast Regulation Reserve (20% VRE):
+                                        <i data-lucide="help-circle" class="w-4 h-4 ml-2 text-indigo-700 cursor-pointer" 
+                                            onclick="openModal('Fast Regulation Reserve (PGC)', 'The proposed PGC standard requires a $20\%$ reserve of the total Variable Renewable Energy (VRE) capacity for fast frequency response. GFM BESS systems are ideally suited to meet this requirement.')"></i>
+                                    </p>
+                                    <p id="as_fast_reg_req" class="text-base font-bold text-red-600">0 MW</p>
+                                    <p class="text-xs text-gray-500">Proposed Reserve Requirement.</p>
+                                </div>
+                                <div class="text-sm">
+                                    <p class="font-semibold text-indigo-800">GFM BESS Contribution:</p>
+                                    <p id="as_gfm_contrib" class="text-base font-bold text-green-600">0 MW</p>
+                                    <p class="text-xs text-gray-500">Equivalent capacity for fast response.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RoCoF Graph -->
+            <div class="card p-6 sm:p-8">
+                <h3 class="text-xl font-bold text-gray-700 mb-4">Frequency Response Visualization (Inertia + PFR)</h3>
+                <div class="bg-gray-50 p-4 rounded-xl">
+                    <canvas id="rocofChart" height="250"></canvas>
+                </div>
+                <p class="mt-4 text-xs text-gray-500">The curve shows the frequency trajectory: initial drop (Inertia), arrest (PFR), and stabilization (QSS). The rate of drop determines stability.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Structure -->
+    <div id="techModal" class="modal-backdrop hidden" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 id="modalTitle" class="text-2xl font-bold text-gray-900 mb-4 border-b pb-2"></h3>
+            <p id="modalContent" class="text-gray-700"></p>
+            <button class="mt-6 w-full py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Global chart instances and constants
+        let gflChart;
+        let iresChart;
+        let rocofChart;
+        const F_NOMINAL = 60.0; // Standard 60Hz system for PH/US systems
+        const S_RATED = 120; // Inverter rated apparent power (kVA) - for GFL tab
+        const EFFICIENCY = 0.85; // BESS Round Trip Efficiency for sizing - for IRESS tab
+        const H_CONSTANTS = {
+            thermal: 6.0,
+            nuclear: 4.0,
+            gfm: 2.0, // Virtual Inertia
+            gfl: 0.0, // Zero Inertia
+        };
+        
+        // Market data constants from the provided image
+        const MARKET_DATA = {
+            baseload: { qty: 33, total_mw: 700 },
+            midmerit: { qty: 16, total_mw: 160 },
+            peaking: { qty: 10, total_mw: 60 }
+        };
+
+        /**
+         * Opens the explanatory modal with specified title and content.
+         */
+        function openModal(title, content) {
+            document.getElementById('modalTitle').innerHTML = title;
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('techModal').classList.remove('hidden');
+        }
+
+        /**
+         * Closes the explanatory modal.
+         */
+        function closeModal() {
+            document.getElementById('techModal').classList.add('hidden');
+        }
+
+
+        /**
+         * Switches the displayed tab content and updates tab button styles.
+         * @param {string} mode - 'gfl', 'gfm', or 'inertial'
+         */
+        function switchTab(mode) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(el => {
+                el.classList.remove('tab-active', 'border-t-4', 'border-blue-500', 'tab-inactive');
+                el.classList.add('tab-inactive');
+                el.style.transform = 'translateY(0)'; // Reset transform
+                el.style.zIndex = 'auto';
+            });
+
+            document.getElementById(`${mode}-content`).classList.remove('hidden');
+            const activeTab = document.getElementById(`${mode}-tab`);
+            activeTab.classList.remove('tab-inactive');
+            activeTab.classList.add('tab-active');
+            activeTab.style.transform = 'translateY(2px)';
+            activeTab.style.zIndex = '10';
+
+
+            // Re-render charts or run calculations when switching tabs
+            if (mode === 'gfl') {
+                calculateGFL();
+                calculateFaultCurrent();
+            } else if (mode === 'gfm') {
+                calculateIRESS();
+                updateMarketAnalysis();
+                calculateASRevenue();
+            } else if (mode === 'inertial') {
+                calculateInertia();
+            }
+        }
+
+        // --- GFL Logic and Chart (SCR and LVRT Integration) ---
+
+        function initGFLChart() {
+            const ctx = document.getElementById('gflChart').getContext('2d');
+            const capability_data = generateCapabilityCircle(S_RATED);
+
+            gflChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        { label: 'Capability Limit (S_rated)', data: capability_data, borderColor: 'rgba(59, 130, 246, 0.5)', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 2, pointRadius: 0, showLine: true, fill: 'origin', },
+                        { label: 'SCR Stability Limit', data: [{ x: 0, y: -S_RATED }, { x: 0, y: S_RATED }], borderColor: '#ef4444', borderWidth: 3, pointRadius: 0, showLine: true, borderDash: [5, 5], },
+                        { label: 'Operating Point (P_set, Q_set)', data: [{ x: 0, y: 0 }], backgroundColor: '#10b981', borderColor: '#10b981', borderWidth: 5, pointRadius: 7, }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Active Power (P) [kW]' }, min: -S_RATED, max: S_RATED, },
+                        y: { title: { display: true, text: 'Reactive Power (Q) [kVAR]' }, min: -S_RATED, max: S_RATED, }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function generateCapabilityCircle(radius) {
+            const points = [];
+            for (let i = 0; i <= 360; i += 5) {
+                const angle = i * (Math.PI / 180);
+                points.push({ x: radius * Math.cos(angle), y: radius * Math.sin(angle) });
+            }
+            return points;
+        }
+
+        function calculateGFL() {
+            const P_set = parseFloat(document.getElementById('gfl_p_set').value) || 0;
+            const Q_set = parseFloat(document.getElementById('gfl_q_set').value) || 0;
+            const SCR = parseFloat(document.getElementById('gfl_scr').value) || 1;
+            const V_grid_pu = parseFloat(document.getElementById('gfl_v_grid_pu').value) || 1.0;
+
+
+            const S = Math.sqrt(P_set ** 2 + Q_set ** 2);
+            const PF = S > 0 ? (P_set / S) : 1;
+            const pfText = `${PF.toFixed(3)} ${Q_set > 0 ? '(lagging)' : Q_set < 0 ? '(leading)' : '(unity)'}`;
+            const P_max_SCR = S_RATED * Math.min(1.0, SCR); 
+            
+            let stabilityText = "Stable (GFL Capability & SCR)";
+            let stabilityColor = "text-green-600";
+            
+            if (S > S_RATED * 1.01) { // 1% tolerance
+                stabilityText = "Overcurrent Limit! S > S_RATED";
+                stabilityColor = "text-red-600";
+            } else if (P_set > P_max_SCR) {
+                stabilityText = "Weak Grid Instability Risk! P > P_max(SCR)";
+                stabilityColor = "text-red-600";
+            } else if (SCR < 3.0) {
+                stabilityText = "Weak Grid Operation (SCR < 3.0)";
+                stabilityColor = "text-yellow-600";
+            }
+
+            document.getElementById('gfl_s_calc').textContent = `${S.toFixed(2)} kVA`;
+            document.getElementById('gfl_pf_calc').textContent = pfText;
+            document.getElementById('gfl_p_max_scr').textContent = `${P_max_SCR.toFixed(2)} kW`;
+            
+            const statusEl = document.getElementById('gfl_status');
+            statusEl.textContent = stabilityText;
+            statusEl.className = `text-lg font-bold ${stabilityColor}`;
+            
+            // PGC Voltage Support Check
+            let vStatusText = "COMPLIANT (0.95 p.u. - 1.05 p.u.)";
+            let vStatusColor = "text-green-600";
+            if (V_grid_pu < 0.95 || V_grid_pu > 1.05) {
+                 vStatusText = `NON-COMPLIANT! V = ${V_grid_pu.toFixed(2)} p.u.`;
+                 vStatusColor = "text-red-600";
+            }
+            document.getElementById('gfl_v_status').textContent = vStatusText;
+            document.getElementById('gfl_v_status').className = `text-lg font-bold ${vStatusColor}`;
+
+            if (gflChart) {
+                gflChart.data.datasets[2].data = [{ x: P_set, y: Q_set }];
+                const limitX = Math.min(P_max_SCR, S_RATED);
+                gflChart.data.datasets[1].data = [{ x: limitX, y: -S_RATED }, { x: limitX, y: S_RATED }];
+                gflChart.update();
+            }
+        }
+        
+        function calculateFaultCurrent() {
+            const Z_vsm = parseFloat(document.getElementById('gfm_z_vsm').value) || 0.2;
+            const V_base = 1.0; // Per Unit
+            const I_base = 100; // Assumed Base Current for simple calculation
+
+            // GFL Fault Current (Current-limited, fixed at a low multiple of rated current, typically 1.2-1.5 p.u.)
+            const I_fault_GFL_pu = 1.5; 
+            document.getElementById('fault_current_gfl').textContent = `${I_fault_GFL_pu.toFixed(2)} p.u. (${(I_fault_GFL_pu * I_base).toFixed(0)} A)`;
+
+            // GFM Fault Current (Voltage-controlled, determined by the virtual impedance)
+            // Simplified: I_fault,GFM = V_base / Z_vsm
+            const I_fault_GFM_pu = V_base / Z_vsm; 
+            document.getElementById('fault_current_gfm').textContent = `${I_fault_GFM_pu.toFixed(2)} p.u. (${(I_fault_GFM_pu * I_base).toFixed(0)} A)`;
+            
+            // Note: In real life, I_fault_GFM would be capped by the inverter hardware, usually around 2-3 p.u.
+            // But mathematically, Z_vsm allows it to be much higher or lower, mimicking a synchronous machine.
+        }
+
+        // --- IRESS Business Models Logic and Chart ---
+
+        function initIRESSChart() {
+            const ctx = document.getElementById('iresChart').getContext('2d');
+            
+            iresChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Baseload (24h)', 'Mid-merit (12h)', 'Peaking (6h)'],
+                    datasets: [
+                        { label: 'Required BESS Energy (MWh)', data: [0, 0, 0], backgroundColor: ['rgba(239, 68, 68, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(20, 184, 166, 0.7)'], borderColor: ['rgb(239, 68, 68)', 'rgb(245, 158, 11)', 'rgb(20, 184, 166)'], borderWidth: 1, yAxisID: 'y' },
+                        { label: 'Available PV Energy (MWh/day)', data: [0, 0, 0], type: 'line', borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', pointRadius: 5, yAxisID: 'y' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Energy (MWh)' }, min: 0, },
+                    },
+                    plugins: {
+                        tooltip: { callbacks: { label: function(context) { let label = context.dataset.label || ''; if (label) { label += ': '; } if (context.parsed.y !== null) { label += context.parsed.y.toFixed(2) + ' MWh'; } return label; } } }
+                    }
+                }
+            });
+        }
+
+        function calculateIRESS() {
+            const P_MW = parseFloat(document.getElementById('ires_peak_power').value) || 0;
+            const E_PV_Daily_MWh = parseFloat(document.getElementById('ires_hours_per_day').value) || 0;
+
+            const H_BASELOAD = 24;
+            const H_MIDMERIT = 12;
+            const H_PEAKING = 6;
+            
+            // Required Energy = Power * Duration / Efficiency
+            const E_Baseload = (P_MW * H_BASELOAD) / EFFICIENCY;
+            const PV_Oversizing_Baseload = E_PV_Daily_MWh > 0 ? (E_Baseload / E_PV_Daily_MWh) * 100 : 0;
+            document.getElementById('ires_e_baseload').textContent = `${E_Baseload.toFixed(1)} MWh`;
+            document.getElementById('ires_pv_baseload').textContent = `${PV_Oversizing_Baseload.toFixed(0)}%`;
+
+            const E_Midmerit = (P_MW * H_MIDMERIT) / EFFICIENCY;
+            const PV_Oversizing_Midmerit = E_PV_Daily_MWh > 0 ? (E_Midmerit / E_PV_Daily_MWh) * 100 : 0;
+            document.getElementById('ires_e_midmerit').textContent = `${E_Midmerit.toFixed(1)} MWh`;
+            document.getElementById('ires_pv_midmerit').textContent = `${PV_Oversizing_Midmerit.toFixed(0)}%`;
+
+            const E_Peaking = (P_MW * H_PEAKING) / EFFICIENCY;
+            const PV_Oversizing_Peaking = E_PV_Daily_MWh > 0 ? (E_Peaking / E_PV_Daily_MWh) * 100 : 0;
+            document.getElementById('ires_e_peaking').textContent = `${E_Peaking.toFixed(1)} MWh`;
+            document.getElementById('ires_pv_peaking').textContent = `${PV_Oversizing_Peaking.toFixed(0)}%`;
+
+            if (iresChart) {
+                const requiredEnergy = [E_Baseload, E_Midmerit, E_Peaking];
+                iresChart.data.datasets[0].data = requiredEnergy;
+                iresChart.data.datasets[1].data = [E_PV_Daily_MWh, E_PV_Daily_MWh, E_PV_Daily_MWh]; 
+                
+                const maxEnergy = Math.max(...requiredEnergy, E_PV_Daily_MWh) * 1.2;
+                iresChart.options.scales.y.max = maxEnergy > 100 ? maxEnergy : 100;
+
+                iresChart.update();
+            }
+            
+            // Recalculate AS Revenue since BESS capacity is input in this tab too
+            calculateASRevenue();
+        }
+
+        function calculateASRevenue() {
+            const P_GFM_MW = parseFloat(document.getElementById('as_capacity_mw').value) || 0;
+            const Price_MWh = parseFloat(document.getElementById('as_price_per_mwh').value) || 0;
+            const Avail_Factor = parseFloat(document.getElementById('as_avail_factor').value) / 100 || 0;
+            const HOURS_PER_YEAR = 8760;
+
+            // Simplified Revenue = Capacity * Price * Hours * Availability (Assumes full capacity is used for AS all year)
+            const Annual_Revenue = P_GFM_MW * Price_MWh * HOURS_PER_YEAR * Avail_Factor;
+
+            // Format as USD currency
+            const formatter = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            });
+            document.getElementById('as_revenue_output').textContent = formatter.format(Annual_Revenue);
+        }
+
+
+        function updateMarketAnalysis() {
+            document.getElementById('market_avg_base').textContent = (MARKET_DATA.baseload.total_mw / MARKET_DATA.baseload.qty).toFixed(1);
+            document.getElementById('market_avg_mid').textContent = (MARKET_DATA.midmerit.total_mw / MARKET_DATA.midmerit.qty).toFixed(1);
+            document.getElementById('market_avg_peak').textContent = (MARKET_DATA.peaking.total_mw / MARKET_DATA.peaking.qty).toFixed(1);
+
+            const totalPotential = MARKET_DATA.baseload.total_mw + MARKET_DATA.midmerit.total_mw + MARKET_DATA.peaking.total_mw;
+            document.getElementById('market_total_potential').textContent = `${totalPotential} MW`;
+        }
+
+        // --- Inertia and PFR Logic ---
+        
+        /**
+         * Initializes the RoCoF Chart.
+         */
+        function initRoCoFChart() {
+            const ctx = document.getElementById('rocofChart').getContext('2d');
+            rocofChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({ length: 50 }, (_, i) => (i * 0.1).toFixed(1)), // Time in seconds
+                    datasets: [
+                        {
+                            label: 'Frequency (f)',
+                            data: [],
+                            borderColor: '#8b5cf6',
+                            tension: 0.2,
+                            pointRadius: 0,
+                            borderWidth: 3,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Time (s)' } },
+                        y: { 
+                            title: { display: true, text: 'Frequency (Hz)' },
+                            min: F_NOMINAL - 0.5,
+                            max: F_NOMINAL + 0.5,
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        /**
+         * Performs Inertia, PFR, and AS calculations.
+         */
+        function calculateInertia() {
+            const S_Sys_MVA = parseFloat(document.getElementById('sys_s_rated').value) || 1;
+            const Delta_P_MW = parseFloat(document.getElementById('delta_p').value) || 0;
+            const PFR_Droop_R = parseFloat(document.getElementById('pfr_droop').value) || 4; // %
+            
+            const Cap_Thermal = parseFloat(document.getElementById('cap_thermal').value) || 0;
+            const Cap_Nuclear = parseFloat(document.getElementById('cap_nuclear').value) || 0;
+            const Cap_GFL = parseFloat(document.getElementById('cap_gfl').value) || 0;
+            const Cap_GFM = parseFloat(document.getElementById('cap_gfm_bess').value) || 0;
+            
+            const Total_Capacity = Cap_Thermal + Cap_Nuclear + Cap_GFL + Cap_GFM;
+
+            // 1. Calculate Total Weighted Inertia Constant (H_Total)
+            const H_Weighted_Sum = (Cap_Thermal * H_CONSTANTS.thermal) +
+                                   (Cap_Nuclear * H_CONSTANTS.nuclear) +
+                                   (Cap_GFM * H_CONSTANTS.gfm) +
+                                   (Cap_GFL * H_CONSTANTS.gfl);
+
+            const H_Total = Total_Capacity > 0 ? (H_Weighted_Sum / Total_Capacity) : 0;
+
+            // 2. Calculate Rate of Change of Frequency (RoCoF)
+            // RoCoF = Delta_P_MW / (2 * H_Total * S_Sys_MVA)
+            const RoCoF = (H_Total > 0 && S_Sys_MVA > 0) ? (Delta_P_MW / (2 * H_Total * S_Sys_MVA)) : 0;
+            
+            // --- PFR Calculations ---
+            const R_sys_pu = PFR_Droop_R / 100; 
+            const Delta_P_pu = Delta_P_MW / S_Sys_MVA;
+            const Delta_f_pu_QSS = R_sys_pu > 0 ? (-Delta_P_pu / R_sys_pu) : 0;
+            const Delta_f_QSS = Delta_f_pu_QSS * F_NOMINAL;
+            const f_QSS = F_NOMINAL + Delta_f_QSS;
+            
+            const PFR_Activated_MW = -Delta_P_MW;
+
+            // 5. Calculate Frequency Nadir (Lowest point) - Simple Approximation
+            const T_delay = 0.4;
+            let f_Nadir_Simple = F_NOMINAL + (RoCoF * T_delay) + (Delta_f_QSS * 0.1); 
+            
+            if (Delta_P_MW < 0) { // Generation loss
+                f_Nadir_Simple = Math.min(f_Nadir_Simple, f_QSS);
+            } else { // Load trip (frequency rises)
+                 f_Nadir_Simple = Math.max(f_Nadir_Simple, f_QSS);
+            }
+            f_Nadir_Simple = Math.max(F_NOMINAL * 0.9, Math.min(F_NOMINAL * 1.1, f_Nadir_Simple)); // Safety bounds
+
+            // --- AS Compliance Check ---
+            const VRE_Capacity = Cap_GFL;
+            const Fast_Reg_Req = VRE_Capacity * 0.20; // 20% of total VRE Nomination
+            const GFM_BESS_Contrib = Cap_GFM; // GFM is the primary provider of Fast AS
+
+            // 6. Update UI
+            document.getElementById('h_total_calc').textContent = `${H_Total.toFixed(2)} s`;
+            document.getElementById('rocof_calc').textContent = `${RoCoF.toFixed(3)} Hz/s`;
+            document.getElementById('qss_calc').textContent = `${f_QSS.toFixed(3)} Hz`;
+            document.getElementById('nadir_calc').textContent = `${f_Nadir_Simple.toFixed(3)} Hz`;
+            document.getElementById('as_vre_capacity').textContent = `${VRE_Capacity.toFixed(0)} MW`;
+            document.getElementById('as_fast_reg_req').textContent = `${Fast_Reg_Req.toFixed(1)} MW`;
+            document.getElementById('as_gfm_contrib').textContent = `${GFM_BESS_Contrib.toFixed(0)} MW`;
+
+            // 7. Update RoCoF Chart
+            if (rocofChart) {
+                const dataPoints = [];
+                const T_SIM = 5.0; // Simulate for 5 seconds
+                const STEP = 0.1;
+
+                for (let t = 0; t <= T_SIM; t += STEP) {
+                    let f_t;
+                    if (t < T_delay) {
+                        // Phase 1: Inertia dominated (linear RoCoF)
+                        f_t = F_NOMINAL + (RoCoF * t);
+                    } else if (t < 2.0) {
+                        // Phase 2: PFR activation (exponential approach to Nadir)
+                        const t_prime = t - T_delay;
+                        const drop_at_delay = F_NOMINAL + (RoCoF * T_delay);
+                        f_t = drop_at_delay - (drop_at_delay - f_Nadir_Simple) * (1 - Math.exp(-t_prime / 0.5));
+                    } else {
+                        // Phase 3: Stabilization towards QSS
+                        const t_prime = t - 2.0;
+                        f_t = f_Nadir_Simple + (f_QSS - f_Nadir_Simple) * (1 - Math.exp(-t_prime / 1.5));
+                    }
+                    dataPoints.push(f_t);
+                }
+
+                rocofChart.data.datasets[0].data = dataPoints.slice(0, rocofChart.data.labels.length);
+                
+                // Update Y-axis scale dynamically
+                const f_min = Math.min(F_NOMINAL * 0.98, ...dataPoints);
+                const f_max = Math.max(F_NOMINAL * 1.02, ...dataPoints);
+                rocofChart.options.scales.y.min = f_min - 0.05;
+                rocofChart.options.scales.y.max = f_max + 0.05;
+                
+                rocofChart.update();
+            }
+        }
+
+
+        // --- Initialization ---
+
+        window.onload = function() {
+            initGFLChart();
+            initIRESSChart();
+            initRoCoFChart();
+            
+            // Ensure the Inertial tab is visible on initial load, as it was the focus of the last update
+            // and all initial calcs run
+            switchTab('inertial');
+            // This ensures GFL calcs are run too, so icons are initialized
+            calculateGFL();
+            calculateFaultCurrent(); // Initialize new fault calculation
+            calculateASRevenue();    // Initialize new revenue calculation
+        }
+        
+        // This ensures Lucide icons are rendered for all initial content
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+
+    </script>
+</body>
+</html>
